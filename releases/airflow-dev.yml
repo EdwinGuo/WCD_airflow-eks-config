@@ -9,42 +9,48 @@ spec:
   releaseName: airflow-dev
     # serviceAccountName: app
   chart:
-    repository: https://edwinguo.github.io/airflow-eks-helm-chart
+    repository: https://airflow.apache.org
     name: airflow
-    version: 1.0.8
+    version: 1.2.0
   values:
+    airflowHome: /opt/airflow
+    defaultAirflowRepository: edwinguo123/airflow-new
+    defaultAirflowTag: "latest"
+    airflowVersion: "2.1.4"
     images:
       airflow:
-        repository: "edwinguo123/docker-eks-airflow"
-        tag: "0.1.3"
-    fernetKey: "7CwHL-dZshOoFGicV5DuqPdeEcBKN66SDcI-TfMFPas="
-    env:
-      - name: "AIRFLOW__CORE__FERNET_KEY"
-        value: "7CwHL-dZshOoFGicV5DuqPdeEcBKN66SDcI-TfMFPas="
-      - name: "AIRFLOW__KUBERNETES__DAGS_IN_IMAGE"
-        value: "False"
-      - name: "AIRFLOW__KUBERNETES__NAMESPACE"
-        value: "dev"
-      - name: "AIRFLOW__KUBERNETES__WORKER_CONTAINER_REPOSITORY"
-        value: "edwinguo123/docker-eks-airflow"
-      - name: "AIRFLOW__KUBERNETES__WORKER_CONTAINER_TAG"
-        value: "0.1.3"
-      - name: "AIRFLOW__KUBERNETES__RUN_AS_USER"
-        value: "50000"
-      - name: "AIRFLOW__KUBERNETES__GIT_SYNC_RUN_AS_USER"
-        value: "65533"
-      - name: "AIRFLOW__CORE__LOAD_EXAMPLES"
-        value: "False"
-      - name: "AIRFLOW__API__AUTH_BACKEND"
-        value: "airflow.contrib.auth.backends.password_auth"
-      - name: "AWS_DEFAULT_REGION"
-        value: "us-east-1"
-      - name: "AWS_REGION"
-        value: "us-east-1"
-    #executor: "KubernetesExecutor"
-    executor: "CeleryExecutor"
-    api:
-      authBackend: "airflow.contrib.auth.backends.password_auth"
+        repository: edwinguo123/airflow-new
+        tag: latest
+        pullPolicy: Always
+      useDefaultImageForMigration: false
+      pod_template:
+        repository: edwinguo123/airflow-new
+        tag: latest
+        pullPolicy: Always
+      flower:
+        repository: edwinguo123/airflow-new
+        tag: latest
+        pullPolicy: Always
+      statsd:
+        repository: apache/airflow
+        tag: airflow-statsd-exporter-2021.04.28-v0.17.0
+        pullPolicy: Always
+      redis:
+        repository: redis
+        tag: 6-buster
+        pullPolicy: Always
+      pgbouncer:
+        repository: apache/airflow
+        tag: airflow-pgbouncer-2021.04.28-1.14.0
+        pullPolicy: Always
+      pgbouncerExporter:
+        repository: apache/airflow
+        tag: airflow-pgbouncer-exporter-2021.09.22-0.12.0
+        pullPolicy: Always
+      gitSync:
+        repository: k8s.gcr.io/git-sync/git-sync
+        tag: v3.3.0
+        pullPolicy: Always
     dags:
       persistence:
         enabled: false
@@ -52,6 +58,178 @@ spec:
         enabled: true
         repo: https://github.com/EdwinGuo/airflow-dags.git 
         branch: master
+        rev: HEAD
+        depth: 1
         maxFailures: 0
         subPath: ""
         wait: 60
+        containerName: git-sync
+        uid: 65533
+        extraVolumeMounts: []
+        env: []
+        resources: {}
+    fernetKey: "7CwHL-dZshOoFGicV5DuqPdeEcBKN66SDcI-TfMFPas="
+    webserverSecretKey: 93b2e9221117e22e89cdc77d29c1180e
+    workers:
+      replicas: 3
+      strategy:
+        rollingUpdate:
+          maxSurge: "100%"
+          maxUnavailable: "50%"
+      keda:
+        enabled: false
+        namespaceLabels: {}
+        pollingInterval: 5
+        cooldownPeriod: 30
+        minReplicaCount: 0
+        maxReplicaCount: 10
+      persistence:
+        enabled: true
+        size: 2Gi
+        storageClassName:
+        fixPermissions: false
+      resources: {}
+      terminationGracePeriodSeconds: 600
+      safeToEvict: true
+      extraContainers: []
+      nodeSelector: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    component: worker
+                topologyKey: "kubernetes.io/hostname"
+    data:
+      metadataConnection:
+        user: postgres
+        pass: postgres
+        protocol: postgresql
+        port: 5432
+        db: postgres
+        sslmode: disable
+    webserver:
+      allowPodLogReading: true
+      livenessProbe:
+        initialDelaySeconds: 15
+        timeoutSeconds: 30
+        failureThreshold: 20
+        periodSeconds: 5
+      readinessProbe:
+        initialDelaySeconds: 15
+        timeoutSeconds: 30
+        failureThreshold: 20
+        periodSeconds: 5
+      replicas: 1
+      defaultUser:
+        enabled: true
+        role: Admin
+        username: admin
+        email: admin@edwinguo.com
+        firstName: admin
+        lastName: user
+        password: FPN=fxVMDmb7WCdZ
+    scheduler:
+      livenessProbe:
+        initialDelaySeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 10
+        periodSeconds: 30
+      replicas: 1
+      serviceAccount:
+        create: true
+        annotations: {}
+      podDisruptionBudget:
+        enabled: false
+        config:
+          maxUnavailable: 1
+      resources: {}
+      safeToEvict: true
+      extraContainers: []
+      extraInitContainers: []
+      extraVolumes: []
+      extraVolumeMounts: []
+      nodeSelector: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    component: scheduler
+                topologyKey: "kubernetes.io/hostname"
+      tolerations: []
+      logGroomerSidecar:
+        enabled: true
+        retentionDays: 15
+        resources: {}
+    flower:
+      username: admin
+      password: admin
+    redis:
+      persistence:
+        enabled: true
+        size: 10Gi
+    ports:
+      flowerUI: 5555
+      airflowUI: 8080
+      workerLogs: 8793
+      redisDB: 6379
+      statsdIngest: 9125
+      statsdScrape: 9102
+      pgbouncer: 6543
+      pgbouncerScrape: 9127
+    quotas: {}
+    limits: []
+    postgresql:
+      enabled: true
+      postgresqlPassword: postgres
+      postgresqlUsername: postgres
+    config:
+      core:
+        load_examples: 'False'
+        colored_console_log: 'False'
+      api:
+        auth_backend: airflow.api.auth.backend.basic_auth
+      logging:
+        colored_console_log: 'False'
+      metrics:
+        statsd_port: 9125
+        statsd_prefix: airflow
+      webserver:
+        enable_proxy_fix: 'True'
+        rbac: 'True'
+      celery:
+        worker_concurrency: 16
+      scheduler:
+        statsd_port: 9125
+        statsd_prefix: airflow
+        run_duration: 41460
+      elasticsearch:
+        json_format: 'True'
+      elasticsearch_configs:
+        max_retries: 3
+        timeout: 30
+        retry_timeout: 'True'
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
+    labels: {}
+    rbac:
+      create: true
+    executor: "CeleryExecutor"
+    allowPodLaunching: true
+    secret: []
+    extraSecrets: {}
+    extraConfigMaps: {}
+    #extraEnv:
+    env:
+      - name: "AWS_DEFAULT_REGION"
+        value: "us-east-1"
+      - name: "AWS_REGION"
+        value: "us-east-1"
+      - name: "AIRFLOW__CORE__LOAD_EXAMPLES"
+        value: 'False'
